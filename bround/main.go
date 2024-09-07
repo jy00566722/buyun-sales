@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/wailsapp/wails/v2/pkg/runtime"
 	excelize "github.com/xuri/excelize/v2"
 )
 
@@ -54,5 +55,6 @@ func Main_go(inputFilePath string, outFilePath string, ctx context.Context) erro
 		fmt.Println("保存 Excel 文件失败:", err)
 		return err
 	}
+	runtime.EventsEmit(ctx, "progress", ProgressInfo{Num: 100, Text: "分析完成"})
 	return nil
 }
