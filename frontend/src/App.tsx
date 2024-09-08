@@ -82,8 +82,9 @@ export default function Component() {
             选择原始数据文件
           </Button>
           {filePath && (
-            <p className="text-sm text-gray-600 truncate bg-gray-100 p-2 rounded-md text-wrap">
-              所选文件: {filePath}
+            //增加文字过长时自动换行
+            <p className="text-sm text-gray-600 bg-gray-100 p-2 rounded-md text-wrap">
+              所选文件:{filePath}
             </p>
           )}
           <Button 

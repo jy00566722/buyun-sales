@@ -161,7 +161,6 @@ func calculateCustomerStats(records []CustomerSaleRecord, latestDate time.Time) 
 }
 
 func generateCustomerExcelReport(f *excelize.File, sheetName string, salesStats map[string][]ProductCustomerStat) error {
-
 	index, err := f.NewSheet(sheetName)
 	if err != nil {
 		return fmt.Errorf("创建工作表失败: %w", err)
@@ -175,9 +174,29 @@ func generateCustomerExcelReport(f *excelize.File, sheetName string, salesStats 
 		f.SetCellValue(sheetName, cell, title)
 	}
 
+	// Calculate total sales for each product
+	productTotals := make(map[string]int)
+	for productID, customerStats := range salesStats {
+		total := 0
+		for _, stat := range customerStats {
+			total += stat.Quantity
+		}
+		productTotals[productID] = total
+	}
+
+	// Create a slice of product IDs and sort by total sales
+	var productIDs []string
+	for productID := range salesStats {
+		productIDs = append(productIDs, productID)
+	}
+	sort.Slice(productIDs, func(i, j int) bool {
+		return productTotals[productIDs[i]] > productTotals[productIDs[j]]
+	})
+
 	// Write data
 	row := 2
-	for productID, customerStats := range salesStats {
+	for _, productID := range productIDs {
+		customerStats := salesStats[productID]
 		startRow := row
 		for _, stat := range customerStats {
 			f.SetCellValue(sheetName, fmt.Sprintf("A%d", row), productID)
@@ -192,12 +211,6 @@ func generateCustomerExcelReport(f *excelize.File, sheetName string, salesStats 
 			f.MergeCell(sheetName, fmt.Sprintf("A%d", startRow), fmt.Sprintf("A%d", endRow))
 		}
 	}
-
-	// Save file
-	//filename := fmt.Sprintf("客户销售统计_%s.xlsx", date.Format("2006-01-02"))
-	//if err := f.SaveAs(filename); err != nil {
-	//	return err
-	//}
 
 	return nil
 }
