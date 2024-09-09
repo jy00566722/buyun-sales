@@ -33,9 +33,12 @@ func CreateStyleReport(f *excelize.File, sheetName string, inputFilePath string,
 	runtime.EventsEmit(ctx, "progress", ProgressInfo{Num: 90, Text: "统计 货号 销量:正在分析数据"})
 	// 2. 处理销售数据
 	styleReports, dateRange := analyzeStyleSales(styleSales)
+	// 2.1. 按日期排序
+	latestDateStr := dateRange[len(dateRange)-1].Format("2006-01-02")
+	sortedReports := sortReportsByLatestDateSales(styleReports, latestDateStr)
 
 	// 3. 生成报告
-	err = createStyleExcelReport(f, sheetName, styleReports, dateRange)
+	err = createStyleExcelReport(f, sheetName, sortedReports, dateRange)
 	if err != nil {
 		//fmt.Println("Error generating Excel report:", err)
 		return err
@@ -143,7 +146,21 @@ func analyzeStyleSales(styleSales []StyleSale) ([]StyleReport, []time.Time) {
 
 	return reports, dateRange
 }
+func sortReportsByLatestDateSales(reports []StyleReport, latestDateStr string) []StyleReport {
+	sort.Slice(reports, func(i, j int) bool {
+		salesI, existsI := reports[i].DailySales[latestDateStr]
+		salesJ, existsJ := reports[j].DailySales[latestDateStr]
 
+		if !existsI {
+			return false
+		}
+		if !existsJ {
+			return true
+		}
+		return salesI > salesJ
+	})
+	return reports
+}
 func createStyleExcelReport(f *excelize.File, sheetName string, reports []StyleReport, dateRange []time.Time) error {
 	// 创建新的工作表
 	index, err := f.NewSheet(sheetName)
