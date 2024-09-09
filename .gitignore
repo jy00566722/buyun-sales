@@ -28,3 +28,5 @@ bin/*
 
 chrome-mv3*
 configMihu.json
+build/bin/*
+frontend/dist/
