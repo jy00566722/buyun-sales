@@ -97,7 +97,6 @@ func readStyleExcelFile(filename string) ([]StyleSaleRecord, error) {
 
 	return records, nil
 }
-
 func calculateStyleStats(records []StyleSaleRecord) (map[string][]StyleCustomerStat, time.Time, time.Time, error) {
 	if len(records) == 0 {
 		return nil, time.Time{}, time.Time{}, fmt.Errorf("no records provided")
@@ -124,22 +123,49 @@ func calculateStyleStats(records []StyleSaleRecord) (map[string][]StyleCustomerS
 		salesMap[record.ProductID][record.Customer][dateStr] += record.Quantity
 	}
 
-	stats := make(map[string][]StyleCustomerStat)
-	productTotals := make(map[string]int)
-
 	lastDate := endDate.Format("2006-01-02")
 
+	// 创建一个结构体来存储产品ID和最后一天的销量
+	type productLastDaySales struct {
+		productID string
+		sales     int
+	}
+
+	// 计算每个产品最后一天的销量
+	var products []productLastDaySales
 	for productID, customers := range salesMap {
-		var productDailyTotal int
+		lastDaySales := 0
+		for _, dailySales := range customers {
+			if sales, exists := dailySales[lastDate]; exists {
+				lastDaySales += sales
+			}
+		}
+		products = append(products, productLastDaySales{productID, lastDaySales})
+	}
+
+	// 按最后一天的销量降序排序产品
+	sort.Slice(products, func(i, j int) bool {
+		return products[i].sales > products[j].sales
+	})
+
+	// 创建排序后的 stats map
+	stats := make(map[string][]StyleCustomerStat)
+
+	// 按排序后的顺序处理产品
+	for _, product := range products {
+		productID := product.productID
+		customers := salesMap[productID]
+
+		if product.sales < 10 {
+			continue // 跳过最后一天销量小于10的产品
+		}
+
 		var customerStats []StyleCustomerStat
 
 		for customer, dailySales := range customers {
 			totalSales := 0
-			for date, quantity := range dailySales {
+			for _, quantity := range dailySales {
 				totalSales += quantity
-				if date == lastDate {
-					productDailyTotal += quantity
-				}
 			}
 
 			if totalSales >= 20 {
@@ -152,31 +178,15 @@ func calculateStyleStats(records []StyleSaleRecord) (map[string][]StyleCustomerS
 			}
 		}
 
-		if productDailyTotal >= 10 {
-			// 对每个货号的客户按总销量降序排序
-			sort.Slice(customerStats, func(i, j int) bool {
-				return customerStats[i].TotalSales > customerStats[j].TotalSales
-			})
-			stats[productID] = customerStats
-			productTotals[productID] = productDailyTotal
-		}
+		// 对每个货号的客户按总销量降序排序
+		sort.Slice(customerStats, func(i, j int) bool {
+			return customerStats[i].TotalSales > customerStats[j].TotalSales
+		})
+
+		stats[productID] = customerStats
 	}
 
-	// 对货号按总销量降序排序
-	var sortedProducts []string
-	for productID := range stats {
-		sortedProducts = append(sortedProducts, productID)
-	}
-	sort.Slice(sortedProducts, func(i, j int) bool {
-		return productTotals[sortedProducts[i]] > productTotals[sortedProducts[j]]
-	})
-
-	sortedStats := make(map[string][]StyleCustomerStat)
-	for _, productID := range sortedProducts {
-		sortedStats[productID] = stats[productID]
-	}
-
-	return sortedStats, startDate, endDate, nil
+	return stats, startDate, endDate, nil
 }
 
 func generateStyleExcelReport(f *excelize.File, sheetName string, salesStats map[string][]StyleCustomerStat, startDate, endDate time.Time) error {
