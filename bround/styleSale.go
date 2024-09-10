@@ -97,7 +97,14 @@ func readStyleExcelFile(filename string) ([]StyleSaleRecord, error) {
 
 	return records, nil
 }
-func calculateStyleStats(records []StyleSaleRecord) (map[string][]StyleCustomerStat, time.Time, time.Time, error) {
+
+type ProductStats struct {
+	ProductID     string
+	LastDaySales  int
+	CustomerStats []StyleCustomerStat
+}
+
+func calculateStyleStats(records []StyleSaleRecord) ([]ProductStats, time.Time, time.Time, error) {
 	if len(records) == 0 {
 		return nil, time.Time{}, time.Time{}, fmt.Errorf("no records provided")
 	}
@@ -105,6 +112,7 @@ func calculateStyleStats(records []StyleSaleRecord) (map[string][]StyleCustomerS
 	salesMap := make(map[string]map[string]map[string]int)
 	var startDate, endDate time.Time
 
+	// ... (populate salesMap, startDate, endDate as before)
 	for _, record := range records {
 		dateStr := record.Date.Format("2006-01-02")
 		if startDate.IsZero() || record.Date.Before(startDate) {
@@ -125,47 +133,19 @@ func calculateStyleStats(records []StyleSaleRecord) (map[string][]StyleCustomerS
 
 	lastDate := endDate.Format("2006-01-02")
 
-	// 创建一个结构体来存储产品ID和最后一天的销量
-	type productLastDaySales struct {
-		productID string
-		sales     int
-	}
+	var productStats []ProductStats
 
-	// 计算每个产品最后一天的销量
-	var products []productLastDaySales
 	for productID, customers := range salesMap {
 		lastDaySales := 0
-		for _, dailySales := range customers {
-			if sales, exists := dailySales[lastDate]; exists {
-				lastDaySales += sales
-			}
-		}
-		products = append(products, productLastDaySales{productID, lastDaySales})
-	}
-
-	// 按最后一天的销量降序排序产品
-	sort.Slice(products, func(i, j int) bool {
-		return products[i].sales > products[j].sales
-	})
-
-	// 创建排序后的 stats map
-	stats := make(map[string][]StyleCustomerStat)
-
-	// 按排序后的顺序处理产品
-	for _, product := range products {
-		productID := product.productID
-		customers := salesMap[productID]
-
-		if product.sales < 10 {
-			continue // 跳过最后一天销量小于10的产品
-		}
-
 		var customerStats []StyleCustomerStat
 
 		for customer, dailySales := range customers {
 			totalSales := 0
-			for _, quantity := range dailySales {
+			for dateStr, quantity := range dailySales {
 				totalSales += quantity
+				if dateStr == lastDate {
+					lastDaySales += quantity
+				}
 			}
 
 			if totalSales >= 20 {
@@ -178,22 +158,33 @@ func calculateStyleStats(records []StyleSaleRecord) (map[string][]StyleCustomerS
 			}
 		}
 
-		// 对每个货号的客户按总销量降序排序
-		sort.Slice(customerStats, func(i, j int) bool {
-			return customerStats[i].TotalSales > customerStats[j].TotalSales
-		})
+		if lastDaySales >= 10 {
+			// Sort customers by total sales in descending order
+			sort.Slice(customerStats, func(i, j int) bool {
+				return customerStats[i].TotalSales > customerStats[j].TotalSales
+			})
 
-		stats[productID] = customerStats
+			productStats = append(productStats, ProductStats{
+				ProductID:     productID,
+				LastDaySales:  lastDaySales,
+				CustomerStats: customerStats,
+			})
+		}
 	}
 
-	return stats, startDate, endDate, nil
+	// Sort products by last day sales in descending order
+	sort.Slice(productStats, func(i, j int) bool {
+		return productStats[i].LastDaySales > productStats[j].LastDaySales
+	})
+
+	return productStats, startDate, endDate, nil
 }
 
-func generateStyleExcelReport(f *excelize.File, sheetName string, salesStats map[string][]StyleCustomerStat, startDate, endDate time.Time) error {
-	// 创建新的工作表
+func generateStyleExcelReport(f *excelize.File, sheetName string, productStats []ProductStats, startDate, endDate time.Time) error {
+	// Create new sheet
 	index, err := f.NewSheet(sheetName)
 	if err != nil {
-		return fmt.Errorf("创建工作表失败: %w", err)
+		return fmt.Errorf("failed to create sheet: %w", err)
 	}
 	f.SetActiveSheet(index)
 
@@ -213,10 +204,10 @@ func generateStyleExcelReport(f *excelize.File, sheetName string, salesStats map
 
 	// Write data
 	row := 2
-	for productID, customerStats := range salesStats {
+	for _, product := range productStats {
 		startRow := row
-		for _, stat := range customerStats {
-			f.SetCellValue(sheetName, fmt.Sprintf("A%d", row), productID)
+		for _, stat := range product.CustomerStats {
+			f.SetCellValue(sheetName, fmt.Sprintf("A%d", row), product.ProductID)
 			f.SetCellValue(sheetName, fmt.Sprintf("B%d", row), stat.Customer)
 
 			col := 3
@@ -243,12 +234,6 @@ func generateStyleExcelReport(f *excelize.File, sheetName string, salesStats map
 			f.MergeCell(sheetName, fmt.Sprintf("A%d", startRow), fmt.Sprintf("A%d", endRow))
 		}
 	}
-
-	// Save file
-	//filename := fmt.Sprintf("款式销售统计_%s_%s.xlsx", startDate.Format("2006-01-02"), endDate.Format("2006-01-02"))
-	//if err := f.SaveAs(filename); err != nil {
-	//	return err
-	//}
 
 	return nil
 }
