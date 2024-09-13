@@ -19,10 +19,11 @@ type StyleSaleRecord struct {
 }
 
 type StyleCustomerStat struct {
-	ProductID  string
-	Customer   string
-	DailySales map[string]int
-	TotalSales int
+	ProductID    string
+	Customer     string
+	DailySales   map[string]int
+	TotalSales   int
+	LastDaySales int
 }
 
 func getStyleSale(f *excelize.File, sheetName string, inputFilePath string, ctx context.Context) error {
@@ -112,7 +113,7 @@ func calculateStyleStats(records []StyleSaleRecord) ([]ProductStats, time.Time, 
 	salesMap := make(map[string]map[string]map[string]int)
 	var startDate, endDate time.Time
 
-	// ... (populate salesMap, startDate, endDate as before)
+	// Populate salesMap, startDate, endDate as before
 	for _, record := range records {
 		dateStr := record.Date.Format("2006-01-02")
 		if startDate.IsZero() || record.Date.Before(startDate) {
@@ -136,32 +137,35 @@ func calculateStyleStats(records []StyleSaleRecord) ([]ProductStats, time.Time, 
 	var productStats []ProductStats
 
 	for productID, customers := range salesMap {
-		lastDaySales := 0
 		var customerStats []StyleCustomerStat
+		lastDaySales := 0
 
 		for customer, dailySales := range customers {
 			totalSales := 0
+			lastDayCustomerSales := 0
 			for dateStr, quantity := range dailySales {
 				totalSales += quantity
 				if dateStr == lastDate {
+					lastDayCustomerSales = quantity
 					lastDaySales += quantity
 				}
 			}
 
 			if totalSales >= 20 {
 				customerStats = append(customerStats, StyleCustomerStat{
-					ProductID:  productID,
-					Customer:   customer,
-					DailySales: dailySales,
-					TotalSales: totalSales,
+					ProductID:    productID,
+					Customer:     customer,
+					DailySales:   dailySales,
+					TotalSales:   totalSales,
+					LastDaySales: lastDayCustomerSales, // 新增字段
 				})
 			}
 		}
 
 		if lastDaySales >= 10 {
-			// Sort customers by total sales in descending order
+			// 首先按最后一天的销量降序排序
 			sort.Slice(customerStats, func(i, j int) bool {
-				return customerStats[i].TotalSales > customerStats[j].TotalSales
+				return customerStats[i].LastDaySales > customerStats[j].LastDaySales
 			})
 
 			productStats = append(productStats, ProductStats{
@@ -172,7 +176,7 @@ func calculateStyleStats(records []StyleSaleRecord) ([]ProductStats, time.Time, 
 		}
 	}
 
-	// Sort products by last day sales in descending order
+	// 按最后一天的总销量对产品进行降序排序
 	sort.Slice(productStats, func(i, j int) bool {
 		return productStats[i].LastDaySales > productStats[j].LastDaySales
 	})
@@ -202,7 +206,7 @@ func generateStyleExcelReport(f *excelize.File, sheetName string, productStats [
 		f.SetCellValue(sheetName, cell, title)
 	}
 
-	// Write data
+	// 写入数据
 	row := 2
 	for _, product := range productStats {
 		startRow := row
@@ -229,7 +233,7 @@ func generateStyleExcelReport(f *excelize.File, sheetName string, productStats [
 		}
 		endRow := row - 1
 
-		// Merge cells for product ID
+		// 合并货号单元格
 		if startRow != endRow {
 			f.MergeCell(sheetName, fmt.Sprintf("A%d", startRow), fmt.Sprintf("A%d", endRow))
 		}
